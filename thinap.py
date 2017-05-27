@@ -120,7 +120,7 @@ class ArgParser:
                         unrecognized.append(non_opts.pop(0))
                         options = non_opts + options
                 else:
-                    assert False, "not recognized option %s" % option
+                    assert False, "unrecognized option %s" % option
 
         nonopt_args = mixed_nonopt_args + nonopt_args
         result = [opts, nonopt_args, unrecognized]
@@ -223,7 +223,7 @@ class ArgParser:
                 vals.append(val)
             result[opt_name] = vals
         else:
-            result[opt_name] = [val]
+            result[opt_name] = val
 
     def detect_conflict(self, request):
         """Check if there is any conflict between any
