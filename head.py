@@ -2,8 +2,8 @@
 import sys
 import os
 
+from lib import correct_offset, human_size_to_byte, TailLocator
 import thinap
-from numberutils import human_size_to_byte
 
 
 class Head:
@@ -86,37 +86,25 @@ class Head:
 
     def head(self, file, amount, mode='bytes', forward=True):
         ifile = self.open_file(file)
-        # apply optimal locating algorithm
+
+        # apply optimal locating algorithm for seekable file
         if ifile.seekable():
             if forward and mode == 'lines':
                 self.copy_first_n_lines(ifile, amount)
+                ifile.close()
                 return
             elif forward and mode == 'bytes':
-                stop_point = amount
-            elif mode == 'lines':
-                stop_point = self.find_start_of_last_n_lines(ifile, amount)
-            elif mode == 'bytes':
-                stop_point = self.find_start_of_last_n_bytes(ifile, amount)
+                stop_point = ifile.seek(0, 1) + amount
+            else:
+                stop_point = TailLocator(ifile, mode, amount, self.bs).run()
             self.copy_up_to_byte(ifile, stop_point)
         else:
-            if forward:
-                ...
-            else:
-                ...
+            assert False, "not implemented"
 
-        # 1. read first N lines (read, check if exceeds line count, then write,
-        # and keep line counts), before writing the final block, check the
-        # total bytes count.
-        #
-        # All the following three are the same: set a stop point first:
-        #
-        # 2. read first N bytes (set a stop point, then read and write)
-        # 3. read except the last N lines (find the stop point, convert to 'except last N bytes')
-        # 4. read except the last N bytes (check if exceeds the stop point)
+        correct_offset(ifile)
 
     def copy_first_n_lines(self, ifile, amount):
         """Copy the first 'amount' lines of the file"""
-        ifile.seek(0)
         ofile = self.ofile
         bs = self.bs
         amount
@@ -124,6 +112,7 @@ class Head:
             chunk = ifile.read(bs)
             if not chunk:
                 break
+
             count = chunk.count(b'\n')  # new-lines in chunk
             if count < amount:
                 ofile.write(chunk)
@@ -139,7 +128,7 @@ class Head:
                 over_read = len(chunk) - pos
 
                 # move the offset back to the righ place,
-                # in order not to affect other process
+                # in order not to affect other processes
                 ifile.seek(-over_read, 1)
                 break
 
@@ -147,188 +136,17 @@ class Head:
         """Copy data from pos up to the stop_point"""
         ofile = self.ofile
         bs = self.bs
-        pos = 0
+        pos = ifile.seek(0, 1)
         amount = stop_point - pos
-        ifile.seek(0)
         if bs >= amount:
             ofile.write(ifile.read(amount))
             return
 
-        #
-        # debug: use a loop to loop a specified times,
-        # stop before the stop_point
-        #
-        check_point = amount - bs
-        while True:
-            chunk = ifile.read(bs)
-            if not chunk:
-                break
-            ofile.write(chunk)
-            pos += len(chunk)
-            if pos >= check_point:
-                ofile.write(ifile.read(stop_point - pos))
-                break
-
-    def find_start_of_last_n_lines(self, ifile, amount):
-        """Find the offset of the last 'amount' lines"""
-        def find_backward(ifile, size, amount):
-            try:
-                offset = ifile.seek(-size, 1)
-            except OSError:
-                cur_pos = ifile.seek(0, 1)
-                if cur_pos == 0:    # at the beginning of file
-                    return True, 0, None
-                elif cur_pos < size:    # less bytes left, expeted
-                    offset = ifile.seek(0)
-                    size = cur_pos
-                else:
-                    assert False, "unkown file seeking failure"
-
-            chunk = ifile.read(size)
-            if not chunk:
-                return True, offset, None
-            count = chunk.count(b'\n')
-
-            # in "line" mode, count equal to amount is not a sign
-            # of 'found'.
-            if count <= amount:
-                amount -= count
-                return False, offset, amount
-            else:   # found
-                offset = -1
-                for i in range(count - amount):
-                    offset = chunk.index(b'\n', offset+1)
-                offset += 1
-                diff = len(chunk) - offset
-                offset = ifile.seek(-diff, 1)
-                return True, offset, None
-
-        bs = self.bs
-        end = ifile.seek(0, 2)
-
-        # in order to align the offset with the beginning of the file,
-        # the first try is less than the block size.
-        last_bs = end % bs
-        stat, offset, amount = find_backward(ifile, last_bs, amount)
-        if stat:
-            return offset
-
-        while not stat:
-            stat, offset, amount = find_backward(ifile, bs, amount)
-
-        return offset
-
-    def find_start_of_last_n_bytes(self, ifile, amount):
-        """Find the offset of the last 'amount' bytes"""
-        def find_backward(ifile, size, amount):
-            try:
-                offset = ifile.seek(-size, 1)
-            except OSError:
-                cur_pos = ifile.seek(0, 1)
-                if cur_pos == 0:    # at the beginning of file
-                    return True, 0, None
-                elif cur_pos < size:    # less bytes left, expeted
-                    offset = ifile.seek(0)
-                    size = cur_pos
-                else:
-                    assert False, "unkown file seeking failure"
-
-            chunk = ifile.read(size)
-            if not chunk:
-                return True, offset, None
-            length = len(chunk)
-            if length < amount:
-                amount -= length
-                return False, offset, amount
-            else:   # found
-                offset = ifile.seek(-amount, 1)
-                return True, offset, None
-
-
-class TailSearcher:
-
-    """Search from the end of the file backward, locate the starting
-    offset of the specified amount, measured by line, or by byte.
-    """
-
-    def __init__(self, ifile, mode, amount):
-        """mode can be 'line' or 'byte'"""
-        assert ifile.seekable(), "input file is not seekable"
-        self.orig_pos = ifile.seek(0, 1)
-        self.ifile = ifile
-        self.mode = mode
-        self.amount = amount
-
-    def find_line(self, chunk amount):
-        """ Find if data chunk contains 'amount' number of lines.
-
-        Return value: (stat, offset, remaining-amount).
-        If the stat is True, the offset is the result, otherwise
-        it's useless. 'remaining-amount' is for the next run.
-        """
-        count = chunk.count(b'\n')
-        if count <= amount:
-            amount -= count
-            return False, 0, amount
-        else:   # found
-            offset = -1
-            for i in range(count - amount):
-                offset = chunk.index(b'\n', offset+1)
-            offset += 1
-            diff = len(chunk) - offset
-            offset = ifile.seek(-diff, 1)
-            return True, offset, 0
-
-    def find_byte(self, chunk amount):
-        """ Find if data chunk contains 'amount' number of bytes.
-
-        Return value: (stat, offset, remaining-amount).
-        If the stat is True, the offset is the result, otherwise
-        it's useless. 'remaining-amount' is for the next run.
-        """
-        length = len(chunk)
-        if length < amount:
-            amount -= length
-            return False, 0, amount
-        else:   # found
-            offset = ifile.seek(-amount, 1)
-            return True, offset, 0
-
-    def find(self, size, amount):
-        """Read 'size' bytes from file (if possible) to find
-
-        Return value: (stat, offset, remaining-amount).
-        If the stat is True, the offset is the result, otherwise
-        it's useless. 'remaining-amount' is for the next run.
-        """
-        ifile = self.ifile
-        try:
-            offset = ifile.seek(-size, 1)
-        except OSError:
-            cur_pos = ifile.seek(0, 1)
-            if cur_pos == 0:    # at the beginning of file
-                return True, 0, 0
-            elif cur_pos < size:    # less bytes left
-                offset = ifile.seek(0)
-                size = cur_pos
-            else:
-                assert False, "unkown file seeking failure"
-
-        chunk = ifile.read(size)
-        if self.mode == 'line':
-            return self.find_line(chunk, amount)
-        else:
-            return self.find_byte(chunk, amount)
-
-    def run(self):
-        """Find the offset of the last 'amount' lines"""
-        ifile = self.ifile
-        bs = self.bs
-        end = ifile.seek(0, 2)
-        while not stat:
-            stat, offset, amount = self.find(ifile, bs, amount)
-        ifile.seek(self.orig_pos)
-        return offset
+        first = amount % bs
+        amount -= first
+        ofile.write(ifile.read(first))
+        for n in range(amount // bs):
+            ofile.write(ifile.read(amount))
 
 
 if __name__ == '__main__':
