@@ -3,6 +3,8 @@ import sys
 from subprocess import Popen, PIPE
 from tempfile import NamedTemporaryFile
 
+import pexpect
+
 BASEDIR = os.path.abspath(os.path.join(os.path.dirname(__name__), '..'))
 sys.path.insert(0, BASEDIR)
 
@@ -51,6 +53,12 @@ class PipeMixin(Mixin):
 
     def teardown_method(self):
         self.pipe.wait()
+
+
+class TerminalMixin:
+
+    def setup_method(self):
+        self.input_data = ['123456789\n'] * 10
 
 
 class TestHead(Mixin):
@@ -242,4 +250,66 @@ class TestPipeInput(PipeMixin):
         app.run(args)
         read_data = self.get_result()
         correct_data = self.get_correct_data(50, forward=False)
+        assert read_data == correct_data
+
+
+class TestTerminalInput(TerminalMixin):
+
+    def test_line_forward(self):
+        c = pexpect.spawn('../head.py -n5')
+        c.setecho(False)
+        for line in self.input_data:
+            c.send(line)
+        c.sendcontrol('d')
+        c.expect(pexpect.EOF)
+        read_data = c.before.replace(b'\r\n', b'\n').decode()
+        correct_data = ''.join(self.input_data[:5])
+        assert read_data == correct_data
+
+    def test_byte_forward(self):
+        c = pexpect.spawn('../head.py -c50')
+        c.setecho(False)
+        for line in self.input_data:
+            c.send(line)
+        c.sendcontrol('d')
+        c.expect(pexpect.EOF)
+        read_data = c.before.replace(b'\r\n', b'\n').decode()
+        correct_data = ''.join(self.input_data[:5])
+        assert read_data == correct_data
+
+    def test_line_backward(self):
+        c = pexpect.spawn('../head.py -n -3')
+        c.setecho(False)
+        for line in self.input_data:
+            c.send(line)
+        c.sendcontrol('d')
+        c.expect(pexpect.EOF)
+        read_data = c.before.replace(b'\r\n', b'\n').decode()
+        correct_data = ''.join(self.input_data[:7])
+        assert read_data == correct_data
+
+    def test_byte_backward(self):
+        c = pexpect.spawn('../head.py -c -10')
+        c.setecho(False)
+        for line in self.input_data:
+            c.send(line)
+        c.sendcontrol('d')
+        c.expect(pexpect.EOF)
+        read_data = c.before.replace(b'\r\n', b'\n').decode()
+        correct_data = ''.join(self.input_data)[:-10]
+        assert read_data == correct_data
+
+    def test_buffer(self):
+        c = pexpect.spawn('../head.py -n -3')
+        c.setecho(False)
+        line = self.input_data[0]
+        c.send(line)
+        index = c.expect([pexpect.TIMEOUT, line], timeout=0.1)
+        assert index == 0
+        for n in range(9):
+            c.send(line)
+        c.sendcontrol('d')
+        c.expect(pexpect.EOF)
+        read_data = c.before.replace(b'\r\n', b'\n').decode()
+        correct_data = line * 7
         assert read_data == correct_data
