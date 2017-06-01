@@ -327,15 +327,18 @@ class HeadWorkerULIT(HeadWorkerSL):
         buffer.push((count, data))
         if buffer.is_ready():
             x, data = buffer.cut()
-            self.ofile.write(data)
-            self.ofile.flush()
+            self.proc(data)
         return True
+
+    def proc(self, data):
+        self.ofile.write(data)
+        self.ofile.flush()
 
     def handle_last(self, buffer):
         while True:
             x, data = buffer.pop()
             if buffer.is_satisfied():
-                self.ofile.write(data)
+                self.proc(data)
             else:
                 diff = buffer.min - buffer.total
                 lines = data.splitlines(keepends=True)
@@ -383,7 +386,3 @@ class HeadWorkerTBIT(HeadWorkerUBIT):
         return self.ifile.readline()
 
 
-__all__ = ['human_size_to_byte', 'correct_offset', 'Locator', 'Buffer',
-           'HeadWorkerSL', 'HeadWorkerSB', 'HeadWorkerTL', 'HeadWorkerTB',
-           'HeadWorkerULIT', 'HeadWorkerTLIT', 'HeadWorkerUBIT',
-           'HeadWorkerTBIT']

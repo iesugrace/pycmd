@@ -12,7 +12,7 @@ class Head:
 
     def __init__(self, orig_cmd=None, cmd_name=None,
                  bs=None, default_lines=None, output_file=None):
-        self.orig_cmd = orig_cmd or '/bin/head'
+        self.orig_cmd = orig_cmd or '/usr/bin/head'
         self.cmd_name = cmd_name or 'head'
         self.bs = bs or 8192
         self.default_lines = default_lines or 10
