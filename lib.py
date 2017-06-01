@@ -386,3 +386,125 @@ class HeadWorkerTBIT(HeadWorkerUBIT):
         return self.ifile.readline()
 
 
+class Mixin:
+
+    def copy_to_end(self):
+        while True:
+            chunk = self.read()
+            if not chunk:
+                break
+            self.ofile.write(chunk)
+
+
+class TailWorkerSLIH(HeadWorkerSL, Mixin):
+    """Seekable, line mode, ignore head"""
+
+    def __init__(self, ifile, ofile, amount, bs=None):
+        super(TailWorkerSLIH, self).__init__(ifile, ofile, amount, bs)
+        if amount > 0:
+            self.amount -= 1
+
+    def action(self, data, count):
+        self.amount -= count
+
+    def handle_last(self, data):
+        pos = -1
+        for i in range(self.amount):
+            pos = data.index(b'\n', pos+1)
+        pos += 1
+        self.ofile.write(data[pos:])
+        self.copy_to_end()
+
+
+class TailWorkerSBIH(TailWorkerSLIH):
+    """Seekable, byte mode, ignore head"""
+
+    def transform(self, data):
+        return len(data)
+
+    def handle_last(self, data):
+        self.ofile.write(data[self.amount:])
+        self.copy_to_end()
+
+
+class TailWorkerSB(TailWorkerSLIH):
+
+    def __init__(self, ifile, ofile, bs=None):
+        self.ifile = ifile
+        self.ofile = ofile
+        self.bs = bs or 8192
+
+    def run(self):
+        self.copy_to_end()
+
+
+class TailWorkerULIH(HeadWorkerULIT, Mixin):
+    """Unseekable, line mode ignore head"""
+
+    def proc(self, data):
+        """Just ignore the data"""
+
+    def handle_last(self, buffer):
+        while True:
+            x, data = buffer.pop()
+            if not buffer.is_satisfied():
+                diff = buffer.min - buffer.total
+                self.split_and_proc(data, diff)
+                for x, data in buffer.data:
+                    self.ofile.write(data)
+                break
+
+    def split_and_proc(self, data, diff):
+        lines = data.splitlines(keepends=True)
+        self.ofile.writelines(lines[-diff:])
+
+
+class TailWorkerUBIH(TailWorkerULIH):
+    """Unseekable, byte mode ignore head"""
+
+    def read(self):
+        return self.ifile.read(self.bs)
+
+    def transform(self, data):
+        return len(data)
+
+    def split_and_proc(self, data, diff):
+        self.ofile.write(data[-diff:])
+
+
+class TailWorkerTLIH(TailWorkerULIH):
+    """Terminal, line mode ignore head"""
+
+    def read(self):
+        return self.ifile.readline()
+
+
+class TailWorkerTBIH(TailWorkerTLIH):
+    """Terminal, byte mode ignore head"""
+
+    def transform(self, data):
+        return len(data)
+
+    def split_and_proc(self, data, diff):
+        self.ofile.write(data[-diff:])
+
+
+class TailWorkerTL(TailWorkerSLIH):
+    """Terminal, line mode, ignore head"""
+
+    def read(self):
+        return self.ifile.readline()
+
+    def handle_last(self, data):
+        self.copy_to_end()
+
+
+class TailWorkerTB(TailWorkerTL):
+    """Terminal, byte mode, ignore head"""
+
+    def transform(self, data):
+        return len(data)
+
+    def handle_last(self, data):
+        self.ofile.write(data[self.amount:])
+        self.copy_to_end()
