@@ -17,8 +17,11 @@ class Mixin:
         cls.ifile_name = NamedTemporaryFile().name
         cls.ofile_name = NamedTemporaryFile().name
         ifile = open(cls.ifile_name, 'w')
-        for n in range(10):
-            ifile.write('123456789\n')
+        lines = ['a0b0c0d0e\n', 'f0g0h0i0j\n', 'k0l0m0n0o\n',
+                 'p0q0r0s0t\n', 'u0v0w0x0y\n', 'z0A0B0C0D\n',
+                 'E0F0G0H0I\n', 'J0K0L0M0N\n', 'O0P0Q0R0S\n',
+                 'T0U0V0W0X\n']
+        ifile.writelines(lines)
         ifile.close()
 
     def teardown_class(cls):
@@ -34,10 +37,10 @@ class Mixin:
             f.close()
         return read_data
 
-    def get_correct_data(self, count, forward=True):
+    def get_correct_data(self, count, direct=True):
         with open(self.ifile_name) as f:
             data = f.read()
-            if forward:
+            if direct:
                 correct_data = data[:count]
             else:
                 correct_data = data[:-count]
@@ -58,7 +61,10 @@ class PipeMixin(Mixin):
 class TerminalMixin:
 
     def setup_method(self):
-        self.input_data = ['123456789\n'] * 10
+        self.input_data = ['a0b0c0d0e\n', 'f0g0h0i0j\n', 'k0l0m0n0o\n',
+                           'p0q0r0s0t\n', 'u0v0w0x0y\n', 'z0A0B0C0D\n',
+                           'E0F0G0H0I\n', 'J0K0L0M0N\n', 'O0P0Q0R0S\n',
+                           'T0U0V0W0X\n']
 
 
 class TestHead(Mixin):
@@ -181,7 +187,7 @@ class TestHeadFileSize(Mixin):
 
 class TestModeAndDirection(Mixin):
 
-    def test_line_forward(self):
+    def test_line_direct(self):
         app = Head(output_file=self.ofile)
         args = ['-n5', self.ifile_name]
         app.run(args)
@@ -189,7 +195,7 @@ class TestModeAndDirection(Mixin):
         correct_data = self.get_correct_data(50)
         assert read_data == correct_data
 
-    def test_byte_forward(self):
+    def test_byte_direct(self):
         app = Head(output_file=self.ofile)
         args = ['-c50', self.ifile_name]
         app.run(args)
@@ -202,7 +208,7 @@ class TestModeAndDirection(Mixin):
         args = ['-n', '-5', self.ifile_name]
         app.run(args)
         read_data = self.get_result()
-        correct_data = self.get_correct_data(50, forward=False)
+        correct_data = self.get_correct_data(50, direct=False)
         assert read_data == correct_data
 
     def test_byte_backward(self):
@@ -210,13 +216,13 @@ class TestModeAndDirection(Mixin):
         args = ['-c', '-50', self.ifile_name]
         app.run(args)
         read_data = self.get_result()
-        correct_data = self.get_correct_data(50, forward=False)
+        correct_data = self.get_correct_data(50, direct=False)
         assert read_data == correct_data
 
 
 class TestPipeInput(PipeMixin):
 
-    def test_line_forward(self):
+    def test_line_direct(self):
         app = Head(output_file=self.ofile)
         args = ['-n5']
         sys.stdin = self.pipe.stdout
@@ -225,7 +231,7 @@ class TestPipeInput(PipeMixin):
         correct_data = self.get_correct_data(50)
         assert read_data == correct_data
 
-    def test_byte_forward(self):
+    def test_byte_direct(self):
         app = Head(output_file=self.ofile)
         args = ['-c50']
         sys.stdin = self.pipe.stdout
@@ -240,7 +246,7 @@ class TestPipeInput(PipeMixin):
         sys.stdin = self.pipe.stdout
         app.run(args)
         read_data = self.get_result()
-        correct_data = self.get_correct_data(50, forward=False)
+        correct_data = self.get_correct_data(50, direct=False)
         assert read_data == correct_data
 
     def test_byte_backward(self):
@@ -249,15 +255,14 @@ class TestPipeInput(PipeMixin):
         sys.stdin = self.pipe.stdout
         app.run(args)
         read_data = self.get_result()
-        correct_data = self.get_correct_data(50, forward=False)
+        correct_data = self.get_correct_data(50, direct=False)
         assert read_data == correct_data
 
 
 class TestTerminalInput(TerminalMixin):
 
-    def test_line_forward(self):
-        c = pexpect.spawn('../head.py -n5')
-        c.setecho(False)
+    def test_line_direct(self):
+        c = pexpect.spawn('../head.py -n5', echo=False)
         for line in self.input_data:
             c.send(line)
         c.sendcontrol('d')
@@ -266,9 +271,8 @@ class TestTerminalInput(TerminalMixin):
         correct_data = ''.join(self.input_data[:5])
         assert read_data == correct_data
 
-    def test_byte_forward(self):
-        c = pexpect.spawn('../head.py -c50')
-        c.setecho(False)
+    def test_byte_direct(self):
+        c = pexpect.spawn('../head.py -c50', echo=False)
         for line in self.input_data:
             c.send(line)
         c.sendcontrol('d')
@@ -278,8 +282,7 @@ class TestTerminalInput(TerminalMixin):
         assert read_data == correct_data
 
     def test_line_backward(self):
-        c = pexpect.spawn('../head.py -n -3')
-        c.setecho(False)
+        c = pexpect.spawn('../head.py -n -3', echo=False)
         for line in self.input_data:
             c.send(line)
         c.sendcontrol('d')
@@ -289,8 +292,7 @@ class TestTerminalInput(TerminalMixin):
         assert read_data == correct_data
 
     def test_byte_backward(self):
-        c = pexpect.spawn('../head.py -c -10')
-        c.setecho(False)
+        c = pexpect.spawn('../head.py -c -10', echo=False)
         for line in self.input_data:
             c.send(line)
         c.sendcontrol('d')
@@ -300,8 +302,7 @@ class TestTerminalInput(TerminalMixin):
         assert read_data == correct_data
 
     def test_buffer(self):
-        c = pexpect.spawn('../head.py -n -3')
-        c.setecho(False)
+        c = pexpect.spawn('../head.py -n -3', echo=False)
         line = self.input_data[0]
         c.send(line)
         index = c.expect([pexpect.TIMEOUT, line], timeout=0.1)
