@@ -68,7 +68,7 @@ def correct_offset(file):
     file.seek(cur)
 
 
-class TailLocator:
+class Locator:
 
     """Search from the end of the file backward, locate the starting
     offset of the specified amount, measured by line, or by byte.
@@ -163,3 +163,227 @@ class TailLocator:
         ifile.seek(self.orig_pos)
         correct_offset(ifile)
         return pos
+
+
+class Buffer:
+
+    def __init__(self, amount):
+        self.min = amount
+        self.total = 0
+        self.data = []
+
+    def push(self, pair):
+        self.data.append(pair)
+        self.total += pair[0]
+
+    def pop(self):
+        pair = self.data.pop(0)
+        self.total -= pair[0]
+        return pair
+
+    def cut(self):
+        """Pop as many pairs off the head of the self.data as
+        self.is_ready() is True, return a combined result.
+        """
+        count = 0
+        data = b''
+        while self.is_ready():
+            x, y = self.pop()
+            count += x
+            data += y
+        return count, data
+
+    def is_satisfied(self):
+        """The minimum amount is satisfied"""
+        return self.total >= self.min
+
+    def is_ready(self):
+        """The buffer is ready to pop"""
+        return self.total - self.data[0][0] >= self.min
+
+
+class HeadWorkerSL:
+    """Seekable, line mode"""
+
+    def __init__(self, ifile, ofile, amount, bs=None):
+        self.ifile = ifile
+        self.ofile = ofile
+        self.amount = amount
+        self.bs = bs or 8192
+
+    def read(self):
+        return self.ifile.read(self.bs)
+
+    def transform(self, data):
+        return data.count(b'\n')
+
+    def is_last(self, count):
+        return count >= self.amount
+
+    def action(self, data, count):
+        self.ofile.write(data)
+        self.amount -= count
+
+    def handle_last(self, data):
+        pos = -1
+        for i in range(self.amount):
+            pos = data.index(b'\n', pos+1)
+        pos += 1
+        self.ofile.write(data[:pos])
+        over_read = len(data) - pos
+        try:
+            self.ifile.seek(-over_read, 1)
+        except Exception:
+            pass
+
+    def run(self):
+        while self.amount:
+            data = self.read()
+            if not data:
+                break
+            count = self.transform(data)
+            if self.is_last(count):
+                self.handle_last(data)
+                break
+            else:
+                self.action(data, count)
+
+
+class HeadWorkerSB(HeadWorkerSL):
+    """Seekable, byte mode"""
+
+    def transform(self, data):
+        return len(data)
+
+    def handle_last(self, data):
+        self.ofile.write(data[:self.amount])
+        over_read = len(data) - self.amount
+        try:
+            self.ifile.seek(-over_read, 1)
+        except Exception:
+            pass
+
+
+class HeadWorkerTL(HeadWorkerSL):
+    """Terminal, line mode"""
+
+    def read(self):
+        return self.ifile.readline()
+
+    def action(self, data, count):
+        self.ofile.write(data)
+        self.amount -= 1
+        self.ofile.flush()
+
+    def handle_last(self, data):
+        self.ofile.write(data)
+        self.ofile.flush()
+
+
+class HeadWorkerTB(HeadWorkerSB):
+    """Terminal, byte mode"""
+
+    def read(self):
+        return self.ifile.readline()
+
+
+class HeadWorkerULIT(HeadWorkerSL):
+    """Unseekable, line mode ignore tail"""
+
+    def __init__(self, ifile, ofile, amount, bs=None):
+        self.ifile = ifile
+        self.ofile = ofile
+        self.amount = amount
+        self.bs = bs or 8192
+
+    def read(self):
+        return self.ifile.read(self.bs)
+
+    def transform(self, data):
+        return data.count(b'\n')
+
+    def fill(self):
+        """Fill up the buffer with content from self.ifile"""
+        amount = self.amount
+        buffer = Buffer(amount)
+        while True:
+            data = self.read()
+            if not data:
+                break
+            count = self.transform(data)
+            buffer.push((count, data))
+            if buffer.is_satisfied():
+                break
+        return buffer
+
+    def step(self, buffer):
+        """Read and process the self.ifile step by step,
+        return False if nothing left in self.ifile.
+        """
+        data = self.read()
+        if not data:
+            return False
+        count = self.transform(data)
+        buffer.push((count, data))
+        if buffer.is_ready():
+            x, data = buffer.cut()
+            self.ofile.write(data)
+            self.ofile.flush()
+        return True
+
+    def handle_last(self, buffer):
+        while True:
+            x, data = buffer.pop()
+            if buffer.is_satisfied():
+                self.ofile.write(data)
+            else:
+                diff = buffer.min - buffer.total
+                lines = data.splitlines(keepends=True)
+                self.ofile.writelines(lines[:-diff])
+                break
+        self.ofile.flush()
+
+    def run(self):
+        buffer = self.fill()
+        if buffer.is_satisfied():
+            while self.step(buffer):
+                pass
+            self.handle_last(buffer)
+
+
+class HeadWorkerTLIT(HeadWorkerULIT):
+    """Terminal, line mode ignore tail"""
+
+    def read(self):
+        return self.ifile.readline()
+
+
+class HeadWorkerUBIT(HeadWorkerULIT):
+    """Unseekable, byte mode ignore tail"""
+
+    def transform(self, data):
+        return len(data)
+
+    def handle_last(self, buffer):
+        while True:
+            x, data = buffer.pop()
+            if buffer.is_satisfied():
+                self.ofile.write(data)
+            else:
+                diff = buffer.min - buffer.total
+                self.ofile.write(data[:-diff])
+                break
+        self.ofile.flush()
+
+
+class HeadWorkerTBIT(HeadWorkerUBIT):
+    """Terminal, byte mode ignore tail"""
+
+    def read(self):
+        return self.ifile.readline()
+
+
+__all__ = ['human_size_to_byte', 'correct_offset', 'Locator', 'Buffer',
+           'HeadWorkerSL', 'HeadWorkerSB', 'HeadWorkerTL', 'HeadWorkerTB',
+           'HeadWorkerULIT', 'HeadWorkerTLIT', 'HeadWorkerUBIT',
+           'HeadWorkerTBIT']
