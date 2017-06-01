@@ -101,7 +101,7 @@ class TestHead(Mixin):
         correct_data = self.get_correct_data(50)
         assert read_data == correct_data
 
-    def test_bs1_len10(self):
+    def test_bs1_len10_byte(self):
         app = Head(bs=1, output_file=self.ofile)
         args = ['-c50', self.ifile_name]
         app.run(args)
@@ -109,7 +109,7 @@ class TestHead(Mixin):
         correct_data = self.get_correct_data(50)
         assert read_data == correct_data
 
-    def test_bs200_len10(self):
+    def test_bs200_len10_byte(self):
         app = Head(bs=1, output_file=self.ofile)
         args = ['-c50', self.ifile_name]
         app.run(args)
@@ -117,7 +117,7 @@ class TestHead(Mixin):
         correct_data = self.get_correct_data(50)
         assert read_data == correct_data
 
-    def test_bs1_len10(self):
+    def test_bs1_len10_line(self):
         app = Head(bs=1, output_file=self.ofile)
         args = ['-n5', self.ifile_name]
         app.run(args)
@@ -125,7 +125,7 @@ class TestHead(Mixin):
         correct_data = self.get_correct_data(50)
         assert read_data == correct_data
 
-    def test_bs200_len10(self):
+    def test_bs200_len10_line(self):
         app = Head(bs=1, output_file=self.ofile)
         args = ['-n5', self.ifile_name]
         app.run(args)
@@ -152,7 +152,7 @@ class TestHead(Mixin):
 
 class TestHeadFileSize(Mixin):
 
-    def test_bs1_size100(self):
+    def test_bs1_size100_byte(self):
         app = Head(bs=1, output_file=self.ofile)
         args = ['-c50', self.ifile_name]
         app.run(args)
@@ -160,7 +160,7 @@ class TestHeadFileSize(Mixin):
         correct_data = self.get_correct_data(50)
         assert read_data == correct_data
 
-    def test_bs200_size100(self):
+    def test_bs200_size100_byte(self):
         app = Head(bs=200, output_file=self.ofile)
         args = ['-c50', self.ifile_name]
         app.run(args)
@@ -168,7 +168,7 @@ class TestHeadFileSize(Mixin):
         correct_data = self.get_correct_data(50)
         assert read_data == correct_data
 
-    def test_bs1_size100(self):
+    def test_bs1_size100_line(self):
         app = Head(bs=1, output_file=self.ofile)
         args = ['-n5', self.ifile_name]
         app.run(args)
@@ -176,7 +176,7 @@ class TestHeadFileSize(Mixin):
         correct_data = self.get_correct_data(50)
         assert read_data == correct_data
 
-    def test_bs200_size100(self):
+    def test_bs200_size100_line(self):
         app = Head(bs=200, output_file=self.ofile)
         args = ['-n5', self.ifile_name]
         app.run(args)
@@ -203,7 +203,7 @@ class TestModeAndDirection(Mixin):
         correct_data = self.get_correct_data(50)
         assert read_data == correct_data
 
-    def test_line_backward(self):
+    def test_line_indirect(self):
         app = Head(output_file=self.ofile)
         args = ['-n', '-5', self.ifile_name]
         app.run(args)
@@ -211,7 +211,7 @@ class TestModeAndDirection(Mixin):
         correct_data = self.get_correct_data(50, direct=False)
         assert read_data == correct_data
 
-    def test_byte_backward(self):
+    def test_byte_indirect(self):
         app = Head(output_file=self.ofile)
         args = ['-c', '-50', self.ifile_name]
         app.run(args)
@@ -240,7 +240,7 @@ class TestPipeInput(PipeMixin):
         correct_data = self.get_correct_data(50)
         assert read_data == correct_data
 
-    def test_line_backward(self):
+    def test_line_indirect(self):
         app = Head(output_file=self.ofile)
         args = ['-n', '-5']
         sys.stdin = self.pipe.stdout
@@ -249,7 +249,7 @@ class TestPipeInput(PipeMixin):
         correct_data = self.get_correct_data(50, direct=False)
         assert read_data == correct_data
 
-    def test_byte_backward(self):
+    def test_byte_indirect(self):
         app = Head(output_file=self.ofile)
         args = ['-c', '-50']
         sys.stdin = self.pipe.stdout
@@ -281,7 +281,7 @@ class TestTerminalInput(TerminalMixin):
         correct_data = ''.join(self.input_data[:5])
         assert read_data == correct_data
 
-    def test_line_backward(self):
+    def test_line_indirect(self):
         c = pexpect.spawn('../head.py -n -3', echo=False)
         for line in self.input_data:
             c.send(line)
@@ -291,7 +291,7 @@ class TestTerminalInput(TerminalMixin):
         correct_data = ''.join(self.input_data[:7])
         assert read_data == correct_data
 
-    def test_byte_backward(self):
+    def test_byte_indirect(self):
         c = pexpect.spawn('../head.py -c -10', echo=False)
         for line in self.input_data:
             c.send(line)
