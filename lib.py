@@ -1,3 +1,5 @@
+import sys
+import os
 import re
 
 
@@ -66,6 +68,13 @@ def correct_offset(file):
     cur = file.seek(0, 1)
     file.seek(0, 2)
     file.seek(cur)
+
+
+def open_file(file):
+    if file == '-':
+        return os.fdopen(sys.stdin.fileno(), 'rb')
+    else:
+        return open(file, 'rb')
 
 
 class Locator:
@@ -508,3 +517,32 @@ class TailWorkerTB(TailWorkerTL):
     def handle_last(self, data):
         self.ofile.write(data[self.amount:])
         self.copy_to_end()
+
+
+class GrepWorker:
+
+    def __init__(self, pattern, options, ifile, ofile, bs=None):
+        self.pattern = pattern
+        self.options = options
+        self.ifile = ifile
+        self.ofile = ofile
+        self.bs = bs or 8192
+
+    def read(self):
+        return self.ifile.readlines(self.bs)
+
+    def run(self):
+        pat = re.compile(self.pattern.encode())
+        fname = self.ifile.name.encode()
+        while True:
+            lines = self.read()
+            if not lines:
+                break
+            for line in lines:
+                if pat.search(line):
+                    if self.options['with_filename']:
+                        self.ofile.write(fname)
+                        self.ofile.write(b':')
+                        self.ofile.write(line)
+                    else:
+                        self.ofile.write(line)
