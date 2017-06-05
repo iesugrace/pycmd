@@ -532,14 +532,34 @@ class GrepWorker:
         return self.ifile.readlines(self.bs)
 
     def run(self):
-        pat = re.compile(self.pattern.encode())
-        fname = self.ifile.name.encode()
+        # handle -i option, ignore case
+        if 'ignore_case' in self.options:
+            pat = re.compile(self.pattern.encode(), re.IGNORECASE)
+        else:
+            pat = re.compile(self.pattern.encode())
+
+        # extract the file name
+        fname = self.ifile.name
+        if fname == 0:
+            fname = b'(standard input)'
+        else:
+            fname = str(fname).encode()
+
         while True:
             lines = self.read()
             if not lines:
                 break
-            for line in lines:
+            for n, line in enumerate(lines, 1):
                 if pat.search(line):
+                    # handle -l option, show file name only
+                    if 'file_match' in self.options:
+                        self.ofile.write(fname + b'\n')
+                        break
+
+                    # handle -n option, show line number
+                    if 'line_number' in self.options:
+                        line = str(n).encode() + b':' + line
+
                     if self.options['with_filename']:
                         self.ofile.write(fname)
                         self.ofile.write(b':')
