@@ -519,6 +519,18 @@ class TailWorkerTB(TailWorkerTL):
         self.copy_to_end()
 
 
+def insert_line_number(lines, num):
+    """Insert line number to the head of each line"""
+    num = str(num).encode()
+    return (b'%s:%s' % (num, line) for line in lines)
+
+
+def insert_file_name(lines, fname):
+    """Insert file name to the head of each line"""
+    fname = fname.encode()
+    return (b'%s:%s' % (fname, line) for line in lines)
+
+
 class GrepWorker:
 
     def __init__(self, pattern, options, ifile, ofile, bs=None):
@@ -532,6 +544,10 @@ class GrepWorker:
         return self.ifile.readlines(self.bs)
 
     def run(self):
+        # handle -w option, match word boundary
+        if 'word_regexp' in self.options:
+            self.pattern = r'\b%s\b' % self.pattern
+
         # handle -i option, ignore case
         if 'ignore_case' in self.options:
             pat = re.compile(self.pattern.encode(), re.IGNORECASE)
@@ -541,28 +557,49 @@ class GrepWorker:
         # extract the file name
         fname = self.ifile.name
         if fname == 0:
-            fname = b'(standard input)'
+            fname = '(standard input)'
         else:
-            fname = str(fname).encode()
+            fname = str(fname)
+
+        # -c option
+        match_count = 0
 
         while True:
             lines = self.read()
             if not lines:
                 break
             for n, line in enumerate(lines, 1):
-                if pat.search(line):
+                matches = pat.findall(line)
+                if matches:
                     # handle -l option, show file name only
                     if 'file_match' in self.options:
                         self.ofile.write(fname + b'\n')
                         break
 
+                    # handle -c option, count the matching lines
+                    if 'count' in self.options:
+                        match_count += 1
+                        continue
+
+                    # handle -o option, show only the matched part
+                    if 'only_matching' in self.options:
+                        o_lines = (x + b'\n' for x in matches)
+                    else:
+                        o_lines = [line]
+
                     # handle -n option, show line number
                     if 'line_number' in self.options:
-                        line = str(n).encode() + b':' + line
+                        o_lines = insert_line_number(o_lines, n)
 
+                    # insert file name if necessary
                     if self.options['with_filename']:
-                        self.ofile.write(fname)
-                        self.ofile.write(b':')
-                        self.ofile.write(line)
-                    else:
-                        self.ofile.write(line)
+                        o_lines = insert_file_name(o_lines, fname)
+
+                    # write out
+                    self.ofile.writelines(o_lines)
+
+        if 'count' in self.options:
+            o_lines = [str(match_count).encode() + b'\n']
+            if self.options['with_filename']:
+                o_lines = insert_file_name(o_lines, fname)
+            self.ofile.writelines(o_lines)

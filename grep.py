@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/home/joshua/.pyenv/versions/3.6.1/bin/python3.6
 import sys
 import os
 
@@ -28,6 +28,8 @@ class Grep:
                    'drecursive': {'flag': ['-R', '--dereference-recursive']},
                    'quiet': {'flag': ['-q', '--quiet', '--silent']},
                    'invert': {'flag': ['-v', '--invert-match']},
+                   'with_filename': {'flag': '-H'},
+                   'no_filename': {'flag': '-h'},
         }
         p = thinap.ArgParser()
         return p.parse_args(args, request, preserve=True)
@@ -75,7 +77,14 @@ class Grep:
         pattern = x[0]
         files = x[1:]
 
-        options['with_filename'] = len(files) > 1
+        if 'with_filename' in options:
+            options['with_filename'] = True
+        elif 'no_filename' in options:
+            options['with_filename'] = False
+        elif len(files) > 1:
+            options['with_filename'] = True
+        else:
+            options['with_filename'] = False
 
         return pattern, files, options
 
