@@ -527,7 +527,6 @@ def insert_line_number(lines, num):
 
 def insert_file_name(lines, fname):
     """Insert file name to the head of each line"""
-    fname = fname.encode()
     return (b'%s:%s' % (fname, line) for line in lines)
 
 
@@ -557,46 +556,50 @@ class GrepWorker:
         # extract the file name
         fname = self.ifile.name
         if fname == 0:
-            fname = '(standard input)'
+            fname = '(standard input)'.encode()
         else:
-            fname = str(fname)
+            fname = str(fname).encode()
 
         # -c option
         match_count = 0
 
-        while True:
-            lines = self.read()
-            if not lines:
-                break
-            for n, line in enumerate(lines, 1):
-                matches = pat.findall(line)
-                if matches:
-                    # handle -l option, show file name only
-                    if 'file_match' in self.options:
-                        self.ofile.write(fname + b'\n')
-                        break
+        try:
+            while True:
+                lines = self.read()
+                if not lines:
+                    break
+                for n, line in enumerate(lines, 1):
+                    matches = pat.findall(line)
+                    if matches:
+                        # handle -l option, show file name only
+                        if 'file_match' in self.options:
+                            self.ofile.write(fname + b'\n')
+                            assert False, "break without error"
 
-                    # handle -c option, count the matching lines
-                    if 'count' in self.options:
-                        match_count += 1
-                        continue
+                        # handle -c option, count the matching lines
+                        if 'count' in self.options:
+                            match_count += 1
+                            continue
 
-                    # handle -o option, show only the matched part
-                    if 'only_matching' in self.options:
-                        o_lines = (x + b'\n' for x in matches)
-                    else:
-                        o_lines = [line]
+                        # handle -o option, show only the matched part
+                        if 'only_matching' in self.options:
+                            o_lines = (x + b'\n' for x in matches)
+                        else:
+                            o_lines = [line]
 
-                    # handle -n option, show line number
-                    if 'line_number' in self.options:
-                        o_lines = insert_line_number(o_lines, n)
+                        # handle -n option, show line number
+                        if 'line_number' in self.options:
+                            o_lines = insert_line_number(o_lines, n)
 
-                    # insert file name if necessary
-                    if self.options['with_filename']:
-                        o_lines = insert_file_name(o_lines, fname)
+                        # insert file name if necessary
+                        if self.options['with_filename']:
+                            o_lines = insert_file_name(o_lines, fname)
 
-                    # write out
-                    self.ofile.writelines(o_lines)
+                        # write out
+                        self.ofile.writelines(o_lines)
+        except AssertionError as e:
+            if str(e) != 'break without error':
+                raise e
 
         if 'count' in self.options:
             o_lines = [str(match_count).encode() + b'\n']
