@@ -3,7 +3,7 @@ import sys
 import os
 
 import thinap
-from lib import open_file, GrepWorker
+from lib import open_file, GrepWorker, GrepWorkerAgg, GrepWorkerFileName
 
 
 class Grep:
@@ -94,7 +94,13 @@ class Grep:
         if ifile.isatty():
             assert False, "not implemented"
         else:
-            GrepWorker(pattern, options, ifile, self.ofile, self.bs).run()
+            if 'count' in options:
+                worker = GrepWorkerAgg
+            elif 'file_match' in options:
+                worker = GrepWorkerFileName
+            else:
+                worker = GrepWorker
+            worker(pattern, options, ifile, self.ofile, self.bs).run()
 
         ifile.close()
 

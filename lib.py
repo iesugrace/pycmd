@@ -538,71 +538,106 @@ class GrepWorker:
         self.ifile = ifile
         self.ofile = ofile
         self.bs = bs or 8192
+        self.nr = 0     # number of records
 
     def read(self):
-        return self.ifile.readlines(self.bs)
+        """Return an enumerate object with line number"""
+        lines = self.ifile.readlines(self.bs)
+        if not lines:
+            return None
+        return enumerate(lines, self.nr + 1)
 
-    def run(self):
+    def make_matcher(self, options):
         # handle -w option, match word boundary
+        pat = self.pattern
         if 'word_regexp' in self.options:
-            self.pattern = r'\b%s\b' % self.pattern
+            pat = r'\b%s\b' % pat
 
         # handle -i option, ignore case
+        flags = 0
         if 'ignore_case' in self.options:
-            pat = re.compile(self.pattern.encode(), re.IGNORECASE)
+            flags |= re.IGNORECASE
+        pat = re.compile(pat.encode(), flags)
+
+        return pat
+
+    def make_fname(self, name):
+        """Make a file name for output"""
+        if name == 0:
+            name = '(standard input)'.encode()
         else:
-            pat = re.compile(self.pattern.encode())
+            name = str(name).encode()
+        self.fname = name
 
-        # extract the file name
-        fname = self.ifile.name
-        if fname == 0:
-            fname = '(standard input)'.encode()
+    def format_output(self, lines, lnum, options):
+        """Format lines for output"""
+        # handle -n option, show line number
+        if 'line_number' in options:
+            lines = insert_line_number(lines, lnum)
+
+        # insert file name if necessary
+        if options['with_filename']:
+            lines = insert_file_name(lines, self.fname)
+
+        return lines
+
+    def write(self, lines):
+        self.ofile.writelines(lines)
+
+    def on_match(self, matches, line, lnum):
+        # handle -o option, show only the matched part
+        if 'only_matching' in self.options:
+            lines = (x + b'\n' for x in matches)
         else:
-            fname = str(fname).encode()
+            lines = [line]
+        lines = self.format_output(lines, lnum, self.options)
+        self.write(lines)
 
-        # -c option
-        match_count = 0
+    def run(self):
+        matcher = self.make_matcher(self.options)
+        self.make_fname(self.ifile.name)
+        while True:
+            lines_data = self.read()
+            if not lines_data:
+                break
+            for n, line in lines_data:
+                matches = matcher.findall(line)
+                if matches:
+                    self.on_match(matches, line, n)
 
+
+class GrepWorkerAgg(GrepWorker):
+
+    def __init__(self, *args, **kargs):
+        super(GrepWorkerAgg, self).__init__(*args, **kargs)
+        self.match_count = 0
+
+    def format_output(self, lines, options):
+        """Format lines for output"""
+        # insert file name if necessary
+        if options['with_filename']:
+            lines = insert_file_name(lines, self.fname)
+        return lines
+
+    def on_match(self, matches, line, lnum):
+        self.match_count += 1
+
+    def run(self):
+        super(GrepWorkerAgg, self).run()
+        lines = [str(self.match_count).encode() + b'\n']
+        lines = self.format_output(lines, self.options)
+        self.write(lines)
+
+
+class GrepWorkerFileName(GrepWorker):
+
+    class StopWorking(Exception): pass
+
+    def on_match(self, matches, line, lnum):
+        raise self.StopWorking
+
+    def run(self):
         try:
-            while True:
-                lines = self.read()
-                if not lines:
-                    break
-                for n, line in enumerate(lines, 1):
-                    matches = pat.findall(line)
-                    if matches:
-                        # handle -l option, show file name only
-                        if 'file_match' in self.options:
-                            self.ofile.write(fname + b'\n')
-                            assert False, "break without error"
-
-                        # handle -c option, count the matching lines
-                        if 'count' in self.options:
-                            match_count += 1
-                            continue
-
-                        # handle -o option, show only the matched part
-                        if 'only_matching' in self.options:
-                            o_lines = (x + b'\n' for x in matches)
-                        else:
-                            o_lines = [line]
-
-                        # handle -n option, show line number
-                        if 'line_number' in self.options:
-                            o_lines = insert_line_number(o_lines, n)
-
-                        # insert file name if necessary
-                        if self.options['with_filename']:
-                            o_lines = insert_file_name(o_lines, fname)
-
-                        # write out
-                        self.ofile.writelines(o_lines)
-        except AssertionError as e:
-            if str(e) != 'break without error':
-                raise e
-
-        if 'count' in self.options:
-            o_lines = [str(match_count).encode() + b'\n']
-            if self.options['with_filename']:
-                o_lines = insert_file_name(o_lines, fname)
-            self.ofile.writelines(o_lines)
+            super(GrepWorkerFileName, self).run()
+        except self.StopWorking:
+            self.write([self.fname + b'\n'])
