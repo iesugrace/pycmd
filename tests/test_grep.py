@@ -95,6 +95,15 @@ class TestGrep(Mixin):
         correct_data = self.get_correct_data('grep', args)
         assert read_data == correct_data
 
+    def test_file_with_matches_no(self):
+        """ -l option """
+        app = Grep(output_file=self.ofile)
+        args = ['-l', 'not exists', self.ifile_name]
+        app.run(args)
+        read_data = self.get_result()
+        correct_data = self.get_correct_data('grep', args)
+        assert read_data == correct_data
+
     def test_line_number(self):
         """ -n option """
         app = Grep(output_file=self.ofile)
