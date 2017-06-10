@@ -519,15 +519,15 @@ class TailWorkerTB(TailWorkerTL):
         self.copy_to_end()
 
 
-def insert_line_number(lines, num):
+def insert_line_number(lines, num, sep=b':'):
     """Insert line number to the head of each line"""
     num = str(num).encode()
-    return (b'%s:%s' % (num, line) for line in lines)
+    return (b'%s%s%s' % (num, sep, line) for line in lines)
 
 
-def insert_file_name(lines, fname):
+def insert_file_name(lines, fname, sep=b':'):
     """Insert file name to the head of each line"""
-    return (b'%s:%s' % (fname, line) for line in lines)
+    return (b'%s%s%s' % (fname, sep, line) for line in lines)
 
 
 class GrepWorker:
@@ -539,6 +539,8 @@ class GrepWorker:
         self.ofile = ofile
         self.bs = bs or 8192
         self.nr = 0     # number of records
+        self.matcher = self.make_matcher(options)
+        self.fname = self.make_fname(ifile.name)
 
     def read(self):
         """Return an enumerate object with line number"""
@@ -567,17 +569,17 @@ class GrepWorker:
             name = '(standard input)'.encode()
         else:
             name = str(name).encode()
-        self.fname = name
+        return name
 
-    def format_output(self, lines, lnum, options):
+    def format_output(self, lines, lnum, options, sep=b':'):
         """Format lines for output"""
         # handle -n option, show line number
         if 'line_number' in options:
-            lines = insert_line_number(lines, lnum)
+            lines = insert_line_number(lines, lnum, sep)
 
         # insert file name if necessary
         if options['with_filename']:
-            lines = insert_file_name(lines, self.fname)
+            lines = insert_file_name(lines, self.fname, sep)
 
         return lines
 
@@ -594,14 +596,12 @@ class GrepWorker:
         self.write(lines)
 
     def run(self):
-        matcher = self.make_matcher(self.options)
-        self.make_fname(self.ifile.name)
         while True:
             lines_data = self.read()
             if not lines_data:
                 break
             for n, line in lines_data:
-                matches = matcher.findall(line)
+                matches = self.matcher.findall(line)
                 if matches:
                     self.on_match(matches, line, n)
 
@@ -641,3 +641,75 @@ class GrepWorkerFileName(GrepWorker):
             super(GrepWorkerFileName, self).run()
         except self.StopWorking:
             self.write([self.fname + b'\n'])
+
+
+class GrepWorkerContext(GrepWorker):
+
+    def __init__(self, *args, **kargs):
+        super(GrepWorkerContext, self).__init__(*args, **kargs)
+        self.before = self.options.get('before', 0)
+        self.after = self.options.get('after', 0)
+        self.b_buf = []
+        self.a_counter = 0
+        self.last_written_lnum = 0
+
+    def write_separator(self, lnum):
+        last_lnum = self.last_written_lnum
+        first_lnum = self.b_buf[0][0] if self.b_buf else lnum
+        if last_lnum and first_lnum - last_lnum > 1:
+            self.write([b'--\n'])
+
+    def on_match(self, matches, line, lnum):
+        # the 'before' buffer may contain more lines than needed,
+        # truncate it before writing the separator in order not
+        # to interfere the line number calculation.
+        if self.before:
+            self.b_buf = self.b_buf[-self.before:]
+        else:
+            self.b_buf.clear()
+        self.write_separator(lnum)
+        self.write_b_buffer()
+        super(GrepWorkerContext, self).on_match(matches, line, lnum)
+        self.last_written_lnum = lnum
+        self.reset_a_counter()
+
+    def on_not_match(self, matches, line, lnum):
+        if self.a_counter:
+            if 'only_matching' not in self.options:
+                lines = self.format_output([line], lnum, self.options, b'-')
+                self.write(lines)
+            self.last_written_lnum = lnum
+            self.a_counter -= 1
+        else:
+            self.b_buf.append((lnum, line))
+
+    def reset_a_counter(self):
+        self.a_counter = self.after
+
+    def write_b_buffer(self):
+        """Write out the 'before' buffer"""
+        if not self.b_buf:
+            return
+
+        # write only when -o option is not presented,
+        if 'only_matching' not in self.options:
+            for lnum, line in self.b_buf:
+                lines = self.format_output([line], lnum, self.options, b'-')
+                self.write(lines)
+
+        self.last_written_lnum = self.b_buf[-1][0]
+        self.b_buf.clear()
+
+    def run(self):
+        bs = self.before
+        while True:
+            self.b_buf = self.b_buf[-bs:]
+            lines_data = self.read()
+            if not lines_data:
+                break
+            for n, line in lines_data:
+                matches = self.matcher.findall(line)
+                if matches:
+                    self.on_match(matches, line, n)
+                else:
+                    self.on_not_match(matches, line, n)

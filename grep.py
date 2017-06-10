@@ -3,7 +3,8 @@ import sys
 import os
 
 import thinap
-from lib import open_file, GrepWorker, GrepWorkerAgg, GrepWorkerFileName
+from lib import (open_file, GrepWorker, GrepWorkerAgg,
+                 GrepWorkerFileName, GrepWorkerContext)
 
 
 class Grep:
@@ -59,18 +60,23 @@ class Grep:
     def comprehend_params(self, params):
         """AssertionError will be raised for wrong argument"""
         options = params[0]
-        if 'after' in options:
-            v = options['after']
-            assert v.isdigit(), "invalid argument for -A: %s" % v
-            options['after'] = int(v)
-        if 'before' in options:
-            v = options['before']
-            assert v.isdigit(), "invalid argument for -B: %s" % v
-            options['before'] = int(v)
+        before = after = None
         if 'context' in options:
             v = options['context']
             assert v.isdigit(), "invalid argument for -C: %s" % v
-            options['context'] = int(v)
+            before = after = int(v)
+        if 'after' in options:
+            v = options['after']
+            assert v.isdigit(), "invalid argument for -A: %s" % v
+            after = int(v)
+        if 'before' in options:
+            v = options['before']
+            assert v.isdigit(), "invalid argument for -B: %s" % v
+            before = int(v)
+        if before is not None:
+            options['before'] = before
+        if after is not None:
+            options['after'] = after
 
         x = params[1]
         assert x, "pattern is required"
@@ -98,6 +104,8 @@ class Grep:
                 worker = GrepWorkerAgg
             elif 'file_match' in options:
                 worker = GrepWorkerFileName
+            elif set(['after', 'before', 'context']) & set(options.keys()):
+                worker = GrepWorkerContext
             else:
                 worker = GrepWorker
             worker(pattern, options, ifile, self.ofile, self.bs).run()
