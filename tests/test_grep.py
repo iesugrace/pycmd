@@ -53,8 +53,9 @@ And God saw every thing that he had made, and, behold, [it was] very good. And t
         ifile.close()
 
     def teardown_class(cls):
-        os.unlink(cls.ifile_name)
-        os.unlink(cls.ofile_name)
+        ...
+        #os.unlink(cls.ifile_name)
+        #os.unlink(cls.ofile_name)
 
     def setup_method(self):
         self.ofile = open(self.ofile_name, 'wb')
@@ -202,46 +203,46 @@ class TestGrep(Mixin):
         correct_data = self.get_correct_data('grep', args)
         assert read_data == correct_data
 
-    # def test_after(self):
-    #     """ -A option """
-    #     app = Grep(output_file=self.ofile)
-    #     args = ['-A1', 'water', self.ifile_name]
-    #     app.run(args)
-    #     read_data = self.get_result()
-    #     correct_data = self.get_correct_data('grep', args)
-    #     assert read_data == correct_data
+    def test_after(self):
+        """ -A option """
+        app = Grep(output_file=self.ofile)
+        args = ['-A1', 'water', self.ifile_name]
+        app.run(args)
+        read_data = self.get_result()
+        correct_data = self.get_correct_data('grep', args)
+        assert read_data == correct_data
 
-    # def test_before(self):
-    #     """ -B option """
-    #     app = Grep(output_file=self.ofile)
-    #     args = ['-B1', 'water', self.ifile_name]
-    #     app.run(args)
-    #     read_data = self.get_result()
-    #     correct_data = self.get_correct_data('grep', args)
-    #     assert read_data == correct_data
+    def test_before(self):
+        """ -B option """
+        app = Grep(output_file=self.ofile)
+        args = ['-B1', 'water', self.ifile_name]
+        app.run(args)
+        read_data = self.get_result()
+        correct_data = self.get_correct_data('grep', args)
+        assert read_data == correct_data
 
-    # def test_context(self):
-    #     """ -C option """
-    #     app = Grep(output_file=self.ofile)
-    #     args = ['-C1', 'water', self.ifile_name]
-    #     app.run(args)
-    #     read_data = self.get_result()
-    #     correct_data = self.get_correct_data('grep', args)
-    #     assert read_data == correct_data
+    def test_context(self):
+        """ -C option """
+        app = Grep(output_file=self.ofile)
+        args = ['-C1', 'water', self.ifile_name]
+        app.run(args)
+        read_data = self.get_result()
+        correct_data = self.get_correct_data('grep', args)
+        assert read_data == correct_data
 
-    #     self.setup_method()
-    #     app = Grep(output_file=self.ofile)
-    #     args = ['-C2', 'water', self.ifile_name]
-    #     app.run(args)
-    #     read_data = self.get_result()
-    #     correct_data = self.get_correct_data('grep', args)
-    #     assert read_data == correct_data
+        self.setup_method()
+        app = Grep(output_file=self.ofile)
+        args = ['-C2', 'water', self.ifile_name]
+        app.run(args)
+        read_data = self.get_result()
+        correct_data = self.get_correct_data('grep', args)
+        assert read_data == correct_data
 
-    # def test_after_before_context(self):
-    #     """ -A, -B and C options """
-    #     app = Grep(output_file=self.ofile)
-    #     args = ['-A1', '-B2', '-C3', 'water', self.ifile_name]
-    #     app.run(args)
-    #     read_data = self.get_result()
-    #     correct_data = self.get_correct_data('grep', args)
-    #     assert read_data == correct_data
+    def test_after_before_context(self):
+        """ -A, -B and C options """
+        app = Grep(output_file=self.ofile)
+        args = ['-A1', '-B2', '-C3', 'water', self.ifile_name]
+        app.run(args)
+        read_data = self.get_result()
+        correct_data = self.get_correct_data('grep', args)
+        assert read_data == correct_data
