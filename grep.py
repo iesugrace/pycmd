@@ -90,6 +90,8 @@ class Grep:
             options['with_filename'] = True
         elif 'no_filename' in options:
             options['with_filename'] = False
+        elif 'drecursive' in options:
+            options['with_filename'] = True
         elif len(files) > 1:
             options['with_filename'] = True
         else:

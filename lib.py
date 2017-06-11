@@ -742,23 +742,47 @@ class GrepWorkerContext(GrepWorker):
         return self.status
 
 
-def recursive_walk(worker, files, pattern, options):
+def recursive_walk(worker, names, pattern, options):
     """Process all regular files, descend into directories. When
     the -q option is provided, the first match will trigger an
     exception named GrepStatusDetermined."""
 
+    def processor(names, pattern, options, worker):
+        status_list = []
+        for name in names:
+            if os.path.isfile(name):
+                status = worker(name, pattern, options)
+                status_list.append(status)
+            elif os.path.isdir(name):
+                try:
+                    sub_names = os.listdir(name)
+                except Exception as e:
+                    print(str(e), file=sys.stderr)
+                    status_list.append(False)
+                else:
+                    sub_names = [os.path.join(name, x) for x in sub_names]
+                    names.extend(sub_names)
+        return status_list
 
-def walk(worker, files, pattern, options):
+    return walk(worker, names, pattern, options, processor)
+
+
+def walk(worker, names, pattern, options, processor=None):
     """Each file shall be a regular file. When the -q option is
     provided, the first match will trigger an exception named
     GrepStatusDetermined."""
-    status_list = []
+    if not processor:
+        def processor(names, pattern, options, worker):
+            status_list = []
+            for name in names:
+                status = worker(name, pattern, options)
+                status_list.append(status)
+            return status_list
+
     try:
-        for file in files:
-            status = worker(file, pattern, options)
-            status_list.append(status)
+        status_list = processor(names, pattern, options, worker)
     except GrepStatusDetermined:
-        status_list.append(True)
+        status_list = [True]
 
     if 'quiet' in options:
         return any(status_list)
