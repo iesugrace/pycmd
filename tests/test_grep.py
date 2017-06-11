@@ -267,6 +267,15 @@ class TestGrep(Mixin):
             correct_data = self.get_correct_data('grep', args)
             assert read_data == correct_data
 
+    def test_drecursive(self):
+        """ -R option """
+        app = Grep(output_file=self.ofile)
+        args = ['-R', 'colemak', '/usr/share/X11/xkb']
+        app.run(args)
+        read_data = sorted(self.get_result())
+        correct_data = sorted(self.get_correct_data('grep', args))
+        assert read_data == correct_data
+
     def test_exit_status(self):
         args_list = []
         for o in list('ilncowHhqv'):
