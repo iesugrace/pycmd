@@ -547,6 +547,11 @@ class GrepWorker:
         self.fname = self.make_fname(ifile.name)
         self.status = False
 
+        # Invert the sense of matching
+        if ('invert' in options and 'file_match' not in options
+                and 'count' not in options):
+            self.on_match, self.on_not_match = self.on_not_match, self.on_match
+
         if 'quiet' in options:
             self.on_match = self.quiet_on_match
 
@@ -607,6 +612,9 @@ class GrepWorker:
         lines = self.format_output(lines, lnum, self.options)
         self.write(lines)
 
+    def on_not_match(self, *args, **kargs):
+        return None
+
     def run(self):
         while True:
             lines_data = self.read()
@@ -616,6 +624,8 @@ class GrepWorker:
                 matches = self.matcher.findall(line)
                 if matches:
                     self.on_match(matches, line, n)
+                else:
+                    self.on_not_match(matches, line, n)
         return self.status
 
 
