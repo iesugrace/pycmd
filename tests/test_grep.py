@@ -269,7 +269,7 @@ class TestGrep(Mixin):
 
     def test_exit_status(self):
         args_list = []
-        for o in list('ilncowHhq'):
+        for o in list('ilncowHhqv'):
             args = ['-'+o, 'God', self.ifile_name]
             args_list.append(args)
 
