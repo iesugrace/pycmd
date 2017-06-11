@@ -530,6 +530,10 @@ def insert_file_name(lines, fname, sep=b':'):
     return (b'%s%s%s' % (fname, sep, line) for line in lines)
 
 
+class GrepNameDetermined(Exception): pass
+class GrepStatusDetermined(Exception): pass
+
+
 class GrepWorker:
 
     def __init__(self, pattern, options, ifile, ofile, bs=None):
@@ -541,6 +545,13 @@ class GrepWorker:
         self.nr = 0     # number of records
         self.matcher = self.make_matcher(options)
         self.fname = self.make_fname(ifile.name)
+        self.status = False
+
+        if 'quiet' in options:
+            self.on_match = self.quiet_on_match
+
+    def quiet_on_match(self, *args, **kargs):
+        raise GrepStatusDetermined
 
     def read(self):
         """Return an enumerate object with line number"""
@@ -587,6 +598,7 @@ class GrepWorker:
         self.ofile.writelines(lines)
 
     def on_match(self, matches, line, lnum):
+        self.status = True
         # handle -o option, show only the matched part
         if 'only_matching' in self.options:
             lines = (x + b'\n' for x in matches)
@@ -604,6 +616,7 @@ class GrepWorker:
                 matches = self.matcher.findall(line)
                 if matches:
                     self.on_match(matches, line, n)
+        return self.status
 
 
 class GrepWorkerAgg(GrepWorker):
@@ -620,27 +633,30 @@ class GrepWorkerAgg(GrepWorker):
         return lines
 
     def on_match(self, matches, line, lnum):
+        self.status = True
         self.match_count += 1
 
     def run(self):
-        super(GrepWorkerAgg, self).run()
+        status = super(GrepWorkerAgg, self).run()
         lines = [str(self.match_count).encode() + b'\n']
         lines = self.format_output(lines, self.options)
         self.write(lines)
+        return status
 
 
 class GrepWorkerFileName(GrepWorker):
 
-    class StopWorking(Exception): pass
-
     def on_match(self, matches, line, lnum):
-        raise self.StopWorking
+        raise GrepNameDetermined
 
     def run(self):
         try:
             super(GrepWorkerFileName, self).run()
-        except self.StopWorking:
+            status = False
+        except GrepNameDetermined:
             self.write([self.fname + b'\n'])
+            status = True
+        return status
 
 
 class GrepWorkerContext(GrepWorker):
@@ -713,3 +729,28 @@ class GrepWorkerContext(GrepWorker):
                     self.on_match(matches, line, n)
                 else:
                     self.on_not_match(matches, line, n)
+        return self.status
+
+
+def recursive_walk(worker, files, pattern, options):
+    """Process all regular files, descend into directories. When
+    the -q option is provided, the first match will trigger an
+    exception named GrepStatusDetermined."""
+
+
+def walk(worker, files, pattern, options):
+    """Each file shall be a regular file. When the -q option is
+    provided, the first match will trigger an exception named
+    GrepStatusDetermined."""
+    status_list = []
+    try:
+        for file in files:
+            status = worker(file, pattern, options)
+            status_list.append(status)
+    except GrepStatusDetermined:
+        status_list.append(True)
+
+    if 'quiet' in options:
+        return any(status_list)
+    else:
+        return all(status_list)

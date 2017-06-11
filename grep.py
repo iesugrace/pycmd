@@ -3,8 +3,8 @@ import sys
 import os
 
 import thinap
-from lib import (open_file, GrepWorker, GrepWorkerAgg,
-                 GrepWorkerFileName, GrepWorkerContext)
+from lib import (open_file, GrepWorker, GrepWorkerAgg, GrepWorkerFileName,
+                 GrepWorkerContext, recursive_walk, walk)
 
 
 class Grep:
@@ -52,10 +52,13 @@ class Grep:
             files = ['-']
 
         # work on each file
-        for file in files:
-            self.work(file, pattern, options)
+        if 'drecursive' in options:
+            status = recursive_walk(self.work, files, pattern, options)
+        else:
+            status = walk(self.work, files, pattern, options)
 
         self.ofile.close()
+        return status
 
     def comprehend_params(self, params):
         """AssertionError will be raised for wrong argument"""
@@ -95,7 +98,11 @@ class Grep:
         return pattern, files, options
 
     def work(self, file, pattern, options):
-        ifile = open_file(file)
+        try:
+            ifile = open_file(file)
+        except Exception as e:
+            print(str(e), file=sys.stderr)
+            return False
 
         if ifile.isatty():
             assert False, "not implemented"
@@ -108,16 +115,20 @@ class Grep:
                 worker = GrepWorkerContext
             else:
                 worker = GrepWorker
-            worker(pattern, options, ifile, self.ofile, self.bs).run()
+            status = worker(pattern, options, ifile, self.ofile, self.bs).run()
 
         ifile.close()
+        return status
 
 
 if __name__ == '__main__':
     app = Grep()
     args = sys.argv[1:]
     try:
-        app.run(args)
-    except AssertionError as e:
+        status = app.run(args)
+    except Exception as e:
         print(e)
         exit(1)
+    else:
+        code = 0 if status else 1
+        exit(code)
