@@ -53,11 +53,13 @@ And God saw every thing that he had made, and, behold, [it was] very good. And t
         ifile.close()
 
     def teardown_class(cls):
-        ...
         #os.unlink(cls.ifile_name)
         #os.unlink(cls.ofile_name)
+        ...
 
     def setup_method(self):
+        if hasattr(self, 'ofile'):
+            self.ofile.close()
         self.ofile = open(self.ofile_name, 'wb')
 
     def get_result(self):
@@ -72,6 +74,13 @@ And God saw every thing that he had made, and, behold, [it was] very good. And t
         p.stdout.close()
         p.wait()
         return data
+
+    def get_code(self, cmd, args):
+        ofile = open(os.devnull, 'w')
+        p = Popen([cmd] + args, stdout=ofile)
+        ofile.close()
+        code = p.wait()
+        return code
 
 
 class TestGrep(Mixin):
@@ -246,3 +255,34 @@ class TestGrep(Mixin):
         read_data = self.get_result()
         correct_data = self.get_correct_data('grep', args)
         assert read_data == correct_data
+
+    def test_quiet(self):
+        """ -q option """
+        for pat in ['water', 'not exist water']:
+            self.setup_method()
+            app = Grep(output_file=self.ofile)
+            args = ['-q', pat, self.ifile_name]
+            app.run(args)
+            read_data = self.get_result()
+            correct_data = self.get_correct_data('grep', args)
+            assert read_data == correct_data
+
+    def test_exit_status(self):
+        args_list = []
+        for o in list('ilncowHhq'):
+            args = ['-'+o, 'God', self.ifile_name]
+            args_list.append(args)
+
+        for o in list('ABC'):
+            args = ['-'+o+'1', 'God', self.ifile_name]
+            args_list.append(args)
+
+        for args in args_list:
+            self.setup_method()
+            app = Grep(output_file=self.ofile)
+            code = 0 if app.run(args) else 1
+            correct_code = self.get_code('grep', args)
+            if code == 0:
+                assert correct_code == 0
+            else:
+                assert correct_code != 0
