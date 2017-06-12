@@ -106,18 +106,15 @@ class Grep:
             print(str(e), file=sys.stderr)
             return False
 
-        if ifile.isatty():
-            assert False, "not implemented"
+        if 'count' in options:
+            worker = GrepWorkerAgg
+        elif 'file_match' in options:
+            worker = GrepWorkerFileName
+        elif set(['after', 'before', 'context']) & set(options.keys()):
+            worker = GrepWorkerContext
         else:
-            if 'count' in options:
-                worker = GrepWorkerAgg
-            elif 'file_match' in options:
-                worker = GrepWorkerFileName
-            elif set(['after', 'before', 'context']) & set(options.keys()):
-                worker = GrepWorkerContext
-            else:
-                worker = GrepWorker
-            status = worker(pattern, options, ifile, self.ofile, self.bs).run()
+            worker = GrepWorker
+        status = worker(pattern, options, ifile, self.ofile, self.bs).run()
 
         ifile.close()
         return status

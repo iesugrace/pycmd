@@ -552,8 +552,14 @@ class GrepWorker:
                 and 'count' not in options):
             self.on_match, self.on_not_match = self.on_not_match, self.on_match
 
+        # set on_match method for -q option
         if 'quiet' in options:
             self.on_match = self.quiet_on_match
+
+        # set reader for tty input file
+        if ifile.isatty():
+            self.read = self.read_tty
+            self.write = self.write_tty
 
     def quiet_on_match(self, *args, **kargs):
         raise GrepStatusDetermined
@@ -568,6 +574,13 @@ class GrepWorker:
         self.nr += count
         return res
 
+    def read_tty(self):
+        """Read the terminal, line by line"""
+        line = self.ifile.readline()
+        if not line:
+            return None
+        self.nr += 1
+        return [(self.nr, line)]
 
     def make_matcher(self, options):
         # handle -w option, match word boundary
@@ -605,6 +618,11 @@ class GrepWorker:
 
     def write(self, lines):
         self.ofile.writelines(lines)
+
+    def write_tty(self, lines):
+        """Write to terminal, flush after every write"""
+        self.ofile.writelines(lines)
+        self.ofile.flush()
 
     def on_match(self, matches, line, lnum):
         self.status = True
