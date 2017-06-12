@@ -204,9 +204,17 @@ class TestGrep(Mixin):
         correct_data = self.get_correct_data('grep', args)
         assert read_data == correct_data
 
-    def test_block_size(self):
+    def test_block_size_fname(self):
         app = Grep(bs=1, output_file=self.ofile)
         args = ['-l', 'water', self.ifile_name]
+        app.run(args)
+        read_data = self.get_result()
+        correct_data = self.get_correct_data('grep', args)
+        assert read_data == correct_data
+
+    def test_block_size_lnum(self):
+        app = Grep(bs=1, output_file=self.ofile)
+        args = ['-n', 'water', self.ifile_name]
         app.run(args)
         read_data = self.get_result()
         correct_data = self.get_correct_data('grep', args)
