@@ -303,3 +303,24 @@ class TestGrep(Mixin):
                 assert correct_code == 0
             else:
                 assert correct_code != 0
+
+    def test_terminal(self):
+        args = ['heaven']
+        file = self.ifile_name
+        c = pexpect.spawn('../grep.py', args, echo=False)
+        for line in open(file):
+            c.send(line)
+        c.sendcontrol('d')
+        c.expect(pexpect.EOF)
+        read_data = c.before.replace(b'\r\n', b'\n')
+        correct_data = self.get_correct_data('grep', args + [file])
+        assert read_data == correct_data
+
+        c = pexpect.spawn('../grep.py', ['-B1', 'abc'], echo=False)
+        c.send('aaa\n')
+        index = c.expect([pexpect.TIMEOUT, 'aaa\r\n'], timeout=0.1)
+        assert index == 0
+        c.send('abc\n')
+        expected = 'aaa\r\nabc\r\n'
+        c.expect(expected, timeout=0.1)
+        assert c.after == expected.encode()
