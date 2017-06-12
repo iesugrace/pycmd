@@ -563,7 +563,11 @@ class GrepWorker:
         lines = self.ifile.readlines(self.bs)
         if not lines:
             return None
-        return enumerate(lines, self.nr + 1)
+        count = len(lines)
+        res = enumerate(lines, self.nr + 1)
+        self.nr += count
+        return res
+
 
     def make_matcher(self, options):
         # handle -w option, match word boundary
