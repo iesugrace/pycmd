@@ -519,22 +519,21 @@ class TailWorkerTB(TailWorkerTL):
         self.copy_to_end()
 
 
-def insert_line_number(lines, num, sep=b':'):
-    """Insert line number to the head of each line"""
-    num = str(num).encode()
-    return (b'%s%s%s' % (num, sep, line) for line in lines)
-
-
-def insert_file_name(lines, fname, sep=b':'):
-    """Insert file name to the head of each line"""
-    return (b'%s%s%s' % (fname, sep, line) for line in lines)
-
-
 class GrepNameDetermined(Exception): pass
 class GrepStatusDetermined(Exception): pass
 
 
 class GrepWorker:
+
+    # VT100 color code
+    c_fname = b'\x1b[35m'           # magenta
+    c_sep = b'\x1b[36m'             # cyan
+    c_lnum = b'\x1b[32m'            # green
+    c_match = b'\x1b[31m\x1b[1m'    # bold red
+    c_off = b'\x1b[0m'              # turn off color
+
+    sep_line = b'--\n'
+    c_sep_line = c_sep + b'--' + c_off + b'\n'
 
     def __init__(self, pattern, options, ifile, ofile, bs=None):
         self.pattern = pattern
@@ -543,7 +542,6 @@ class GrepWorker:
         self.ofile = ofile
         self.bs = bs or 8192
         self.nr = 0     # number of records
-        self.matcher = self.make_matcher(options)
         self.fname = self.make_fname(ifile.name)
         self.status = False
 
@@ -560,6 +558,39 @@ class GrepWorker:
         if ifile.isatty():
             self.read = self.read_tty
             self.write = self.write_tty
+
+        # setup color output
+        color = options['color']
+        if color == 'always' or self.ofile.isatty() and color == 'auto':
+            self.sep_line = self.c_sep_line
+            self.make_fname_str = self.make_color_fname_str
+            self.make_lnum_str = self.make_color_lnum_str
+            self.make_matcher = self.make_color_matcher
+
+        self.matcher = self.make_matcher(options)
+
+    def insert_line_number(self, lines, num, sep=b':'):
+        """Insert line number to the head of each line"""
+        num = str(num).encode()
+        num_str = self.make_lnum_str(num, sep)
+        return (b'%s%s' % (num_str, line) for line in lines)
+
+    def insert_file_name(self, lines, fname, sep=b':'):
+        """Insert file name to the head of each line"""
+        fname_str = self.make_fname_str(fname, sep)
+        return (b'%s%s' % (fname_str, line) for line in lines)
+
+    def make_lnum_str(self, num, sep):
+        return num + sep
+
+    def make_fname_str(self, fname, sep):
+        return fname + sep
+
+    def make_color_lnum_str(self, num, sep):
+        return self.c_lnum + num + self.c_sep + sep + self.c_off
+
+    def make_color_fname_str(self, fname, sep):
+        return self.c_fname + fname + self.c_sep + sep + self.c_off
 
     def quiet_on_match(self, *args, **kargs):
         raise GrepStatusDetermined
@@ -582,7 +613,7 @@ class GrepWorker:
         self.nr += 1
         return [(self.nr, line)]
 
-    def make_matcher(self, options):
+    def make_normal_matcher(self, options):
         # handle -w option, match word boundary
         pat = self.pattern
         if 'word_regexp' in self.options:
@@ -596,6 +627,29 @@ class GrepWorker:
 
         return pat
 
+    def make_matcher(self, options):
+        pat = self.make_normal_matcher(options)
+        class C:
+            def findall(self, line):
+                return pat.findall(line), line
+        return C()
+
+    def make_color_matcher(self, options):
+        pat = self.make_normal_matcher(options)
+        c_match = self.c_match
+        c_off = self.c_off
+        class C:
+            def findall(self, line):
+                matches = pat.findall(line)
+                if matches:
+                    matches = [c_match + x + c_off for x in matches]
+                    line = re.sub(pat, self.apply_color, line)
+                return matches, line
+            def apply_color(self, m):
+                return c_match + m.group() + c_off
+
+        return C()
+
     def make_fname(self, name):
         """Make a file name for output"""
         if name == 0:
@@ -608,11 +662,11 @@ class GrepWorker:
         """Format lines for output"""
         # handle -n option, show line number
         if 'line_number' in options:
-            lines = insert_line_number(lines, lnum, sep)
+            lines = self.insert_line_number(lines, lnum, sep)
 
         # insert file name if necessary
         if options['with_filename']:
-            lines = insert_file_name(lines, self.fname, sep)
+            lines = self.insert_file_name(lines, self.fname, sep)
 
         return lines
 
@@ -643,7 +697,7 @@ class GrepWorker:
             if not lines_data:
                 break
             for n, line in lines_data:
-                matches = self.matcher.findall(line)
+                matches, line = self.matcher.findall(line)
                 if matches:
                     self.on_match(matches, line, n)
                 else:
@@ -661,7 +715,7 @@ class GrepWorkerAgg(GrepWorker):
         """Format lines for output"""
         # insert file name if necessary
         if options['with_filename']:
-            lines = insert_file_name(lines, self.fname)
+            lines = self.insert_file_name(lines, self.fname)
         return lines
 
     def on_match(self, matches, line, lnum):
@@ -705,7 +759,7 @@ class GrepWorkerContext(GrepWorker):
         last_lnum = self.last_written_lnum
         first_lnum = self.b_buf[0][0] if self.b_buf else lnum
         if last_lnum and first_lnum - last_lnum > 1:
-            self.write([b'--\n'])
+            self.write([self.sep_line])
 
     def on_match(self, matches, line, lnum):
         # the 'before' buffer may contain more lines than needed,
@@ -756,7 +810,7 @@ class GrepWorkerContext(GrepWorker):
             if not lines_data:
                 break
             for n, line in lines_data:
-                matches = self.matcher.findall(line)
+                matches, line = self.matcher.findall(line)
                 if matches:
                     self.on_match(matches, line, n)
                 else:

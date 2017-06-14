@@ -31,6 +31,7 @@ class Grep:
                    'invert': {'flag': ['-v', '--invert-match']},
                    'with_filename': {'flag': '-H', 'multi': True, 'order': True},
                    'no_filename': {'flag': '-h', 'multi': True, 'order': True},
+                   'color': {'flag': ['--color', '--colour'], 'arg': 3},
         }
         p = thinap.ArgParser()
         return p.parse_args(args, request, preserve=True)
@@ -102,6 +103,15 @@ class Grep:
             with_filename = False
             del options['no_filename']
         options['with_filename'] = with_filename
+
+        # show color or not?
+        if 'color' not in options:
+            options['color'] = 'never'
+        if options['color'] is True:
+            options['color'] = 'auto'
+        color = options['color']
+        color_valid = color in ('never', 'always', 'auto')
+        assert color_valid, "invalid argument for --color: %s" % color
 
         # remove the argument position info
         pattern = pattern[-1]
