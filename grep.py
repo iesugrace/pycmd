@@ -29,8 +29,8 @@ class Grep:
                    'drecursive': {'flag': ['-R', '--dereference-recursive']},
                    'quiet': {'flag': ['-q', '--quiet', '--silent']},
                    'invert': {'flag': ['-v', '--invert-match']},
-                   'with_filename': {'flag': '-H'},
-                   'no_filename': {'flag': '-h'},
+                   'with_filename': {'flag': '-H', 'multi': True, 'order': True},
+                   'no_filename': {'flag': '-h', 'multi': True, 'order': True},
         }
         p = thinap.ArgParser()
         return p.parse_args(args, request, preserve=True)
@@ -86,17 +86,26 @@ class Grep:
         pattern = x[0]
         files = x[1:]
 
-        if 'with_filename' in options:
-            options['with_filename'] = True
+        # show the file name or not?
+        with_filename = False
+        if 'drecursive' in options or len(files) > 1:
+            with_filename = True
+        # if both -h and -H are supplied, the right-most takes effect.
+        if 'with_filename' in options and 'no_filename' in options:
+            yes_idx = options['with_filename'][-1][0]
+            no_idx = options['no_filename'][-1][0]
+            with_filename = yes_idx > no_idx
+            del options['no_filename']
+        elif 'with_filename' in options:
+            with_filename = True
         elif 'no_filename' in options:
-            options['with_filename'] = False
-        elif 'drecursive' in options:
-            options['with_filename'] = True
-        elif len(files) > 1:
-            options['with_filename'] = True
-        else:
-            options['with_filename'] = False
+            with_filename = False
+            del options['no_filename']
+        options['with_filename'] = with_filename
 
+        # remove the argument position info
+        pattern = pattern[-1]
+        files = [a for n,a in files]
         return pattern, files, options
 
     def work(self, file, pattern, options):
