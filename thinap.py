@@ -49,8 +49,13 @@ class ArgParser:
         recognize the -opt as option -opt, or option -o with an
         argument 'pt'.
 
-        arg, defines if the option requires an argument, defaults to
-        False.
+        arg, defines if the option requires an argument, defaults to 0.
+        possible values of the argument:
+
+        0: no argument
+        1: argument required
+        2: option flag is a re, the flag itself is an argument
+        3: argument is optional, equal sign required before the argument
 
         multi, whether the option can be specified multiple times to
         collect multiple values, defaults to False.
@@ -70,15 +75,18 @@ class ArgParser:
         returned for further parsing.
         """
 
-        # work on an copy
+        # work on an copy,
+        # preserve the order of each option/argument
         args = args[:]
+        args = list(enumerate(args))
 
         self.detect_conflict(request)
 
         # separate the options and non-option arguments
         try:
-            idx = args.index('--')
-        except:
+            indexes = [n for n,arg in args if arg == '--']
+            idx = indexes[0]
+        except Exception:
             options, nonopt_args = args[:], []
         else:
             options, nonopt_args = args[:idx], args[idx+1:]
@@ -123,6 +131,8 @@ class ArgParser:
                     assert False, "unrecognized option %s" % option
 
         nonopt_args = mixed_nonopt_args + nonopt_args
+        if not preserve:
+            nonopt_args = [a for n,a in nonopt_args]
         result = [opts, nonopt_args, unrecognized]
         return result
 
@@ -140,21 +150,32 @@ class ArgParser:
         but to the long format, it is the same meaning as of value 1,
         the normal short format and the format like -12 are
         distinguished by the first non-dash character, when it is an
-        alphabet, it is a normal short format.
+        alphabet, it is a normal short format. If the arg_type is 3,
+        the argument is optional, and an equal sign must be used as the
+        separator between the option and the argument if the argument
+        is supplied.
 
         If multi is True, the value of the option will be appended to
-        the 'opts' if it had not yet been there. If it is False, then
-        the previous value of the same option will be replaced.
+        the associated list in the 'opts' if the value had not yet in
+        the list. If it is False, then the previous value of the same
+        option will be replaced.
+
+        If order is True, the order of the option in the command line
+        argument list will be preserved
 
         One option compares with each of the flags in the 'request'.
 
         Return True if option matched, otherwise False.
         """
 
+        # the option is a tuple
+        opt_pos, option = option
+
         for opt_name, opt_def in request.items():
             flags = opt_def['flag']
-            arg_type = opt_def.get('arg', False)
+            arg_type = opt_def.get('arg', 0)
             multi = opt_def.get('multi', False)
+            order = opt_def.get('order', False)
             if not isinstance(flags, (list, tuple)):
                 flags = [flags]
 
@@ -168,11 +189,16 @@ class ArgParser:
                             val = True
                     else:
                         heading = flag + '='
+                        # --key=val
                         if option.startswith(heading):
                             val = option[len(heading):]
+                        # --key val, or --key
                         elif option == flag:
-                            assert len(options), errmsg
-                            val = options.pop(0)
+                            if arg_type == 1:
+                                assert len(options), errmsg
+                                val = options.pop(0)[1]
+                            elif arg_type == 3:
+                                val = True
                 # short form
                 elif re.match('-[^-]+', flag):
                     if arg_type == 0:
@@ -180,13 +206,15 @@ class ArgParser:
                             val = True
                         elif option.startswith(flag):
                             # train multiple options together
+                            # add 0.001 to the position to distinguish
+                            # the order of the trained options.
                             val = True
                             next_option = '-' + option[len(flag):]
-                            options.insert(0, next_option)
+                            options.insert(0, (opt_pos+0.001, next_option))
                     elif arg_type == 1:
                         if option == flag:
                             assert len(options), errmsg
-                            val = options.pop(0)
+                            val = options.pop(0)[1]
                         elif option.startswith(flag):
                             val = option[len(flag):]
                     elif arg_type == 2:
@@ -194,7 +222,7 @@ class ArgParser:
                             # normal short format
                             if option == flag:
                                 assert len(options), errmsg
-                                val = options.pop(0)
+                                val = options.pop(0)[1]
                             elif option.startswith(flag):
                                 val = option[len(flag):]
                         elif re.match(flag, option):
@@ -210,6 +238,8 @@ class ArgParser:
 
                 # matched, option processed, return.
                 if val is not None:
+                    if order:
+                        val = (opt_pos, val)
                     self.save_opt(opts, opt_name, val, multi)
                     return True
 
@@ -249,13 +279,15 @@ class ArgParser:
 
     def split_leading_non_opts(self, options):
         for idx, opt in enumerate(options):
+            # 'opt' is a tuple.
+            #
             # a dash followed by a non-blank character,
             # forms like if=/dev/sda, a=1, b=2,
             # are all options
             #
             # others are non-opt arguments, including
             # the special single dash '-'
-            if re.match('^(-[^\s]|\w+=)', opt):  # is an option
+            if re.match('^(-[^\s]|\w+=)', opt[1]):  # is an option
                 non_opts = options[:idx]
                 opts = options[idx:]
                 return non_opts, opts
